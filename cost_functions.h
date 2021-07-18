@@ -129,3 +129,57 @@ struct Homography_reprojection_cost {
 	const Vec2 y_;
 
 };
+
+
+struct sampson_error_cost {
+
+	sampson_error_cost(const Vec2& x, const Vec2& y) \
+		: x_(x), y_(y) {}
+
+	template<typename T>
+	bool operator()(const T* homography_parameters,T* residuals) const {
+
+		typedef Eigen::Matrix<T, 3, 3> Mat3;
+		typedef Eigen::Matrix<T, 3, 1> Vec3;
+		typedef Eigen::Matrix<T, 2, 1> Vec2;
+		typedef Eigen::Matrix<T, 2, 9> Mat_2_9;
+		typedef Eigen::Matrix<T, 2, 4> Mat_2_4;
+		typedef Eigen::Matrix<T, 4, 2> Mat_4_2;
+		typedef Eigen::Matrix<T, 2, 2> Mat_2_2;
+		typedef Eigen::Matrix<T, 1, 2> Vec2_1;
+		typedef Eigen::Matrix<T, 9, 1> Vec9;
+
+		Vec2 epislon;
+		Mat_2_9 epsilon_mat ;
+		Mat_2_4 J ;
+		Vec9 H_;
+
+		H_ << homography_parameters[0],
+			  homography_parameters[1],
+			  homography_parameters[2],
+			  homography_parameters[3],
+			  homography_parameters[4],
+			  homography_parameters[5],
+			  homography_parameters[6],
+			  homography_parameters[7],
+			  homography_parameters[8];
+
+		epsilon_mat << T(0), T(0), T(0), T(-x_(0)), T(-x_(1)), T(-1), T(y_(1)* x_(0)), T(y_(1)* x_(1)), T(y_(1)),
+			       T(x_(0)), T(x_(1)), T(1), T(0), T(0), T(0),T(-y_(0) * x_(0)), T(-y_(0) * x_(1)), T(-y_(0));
+
+		epislon = epsilon_mat * H_;
+
+		
+		J << T(-H(1,0) + (y_(1)*H(2,0))) ,   T(-H(1,1) + (y_(1)*H(2,1))) ,  T(0) ,T((x_(0)*H(2,0)) + (x_(1) * H(2,1)) + (H(2,2))),
+		          T(H(0,0) - (y_(1) * H(2,0))) ,  T(H(0,1) - (y_(1) * H(2, 1))), T((-x_(0)*H(2,0)) - (x_(1)* H(2,1)) -H(2,2)) , T(0);
+
+		                
+		residuals[0] = epislon.transpose() * ((J * (J.transpose())).inverse()) * epislon;
+
+		return true;
+	}
+
+	const Vec2 x_;
+	const Vec2 y_;
+
+};

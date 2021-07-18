@@ -88,8 +88,8 @@ bool create_optimization_problem(const Mat &x1, const Mat &x2, Mat &x3_new,Mat3 
 		for (int i = 0; i < x1.cols();i++) {
 
 		 double	x_new_vec[2] = {x3_new(0, i), x3_new(1, i)};
-			ceres::CostFunction* mycost_o = new AutoDiffCostFunction<Homography_reprojection_cost, 1,9,2>(new Homography_reprojection_cost(x1.col(i), x2.col(i)));
-			problem.AddResidualBlock(mycost_o, nullptr,H->data(), x_new_vec);
+			ceres::CostFunction* mycost_o = new AutoDiffCostFunction<sampson_error_cost, 1,9>(new sampson_error_cost(x1.col(i), x2.col(i)));
+			problem.AddResidualBlock(mycost_o, nullptr,H->data());
 					
 		}
 		// Configure the solve.
