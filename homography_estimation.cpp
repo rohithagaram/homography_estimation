@@ -1,6 +1,7 @@
 #include <ceres/ceres.h>
 #include <glog/logging.h>
 #include <Eigen/SVD>
+#include "cost_functions.h"
 
 using ceres::Solver;
 using ceres::Solve;
@@ -37,62 +38,9 @@ public:
 	}
 };
 
-// Calculate symmetric geometric cost terms:
-//
-// forward_error = D(H * x1, x2)
-// backward_error = D(H^-1 * x2, x1)
-
-template <typename T>
-void SymmetricGeometricDistanceTerms(const Eigen::Matrix<T, 3, 3>& H,
-	const Eigen::Matrix<T, 2, 1>& x1,
-	const Eigen::Matrix<T, 2, 1>& x2,
-	T forward_error[2],
-	T backward_error[2]) {
-	typedef Eigen::Matrix<T, 3, 1> Vec3;
-	Vec3 x(x1(0), x1(1), T(1.0));
-	Vec3 y(x2(0), x2(1), T(1.0));
-
-	Vec3 H_x = H * x;
-	Vec3 Hinv_y = H.inverse() * y;
-
-	H_x /= H_x(2);
-	Hinv_y /= Hinv_y(2);
-
-	forward_error[0] = H_x(0) - y(0);
-	forward_error[1] = H_x(1) - y(1);
-	backward_error[0] = Hinv_y(0) - x(0);
-	backward_error[1] = Hinv_y(1) - x(1);
-}
-
-class Homography_symmetric_transfer_cost {
-public:
-	Homography_symmetric_transfer_cost(const Vec2& x,
-		const Vec2& y)
-		: x_(x), y_(y) { }
-
-	template<typename T>
-	bool operator()(const T* homography_parameters, T* residuals) const {
-		typedef Eigen::Matrix<T, 3, 3> Mat3;
-		typedef Eigen::Matrix<T, 2, 1> Vec2;
-
-		Mat3 H(homography_parameters);
-		Vec2 x(T(x_(0)), T(x_(1)));
-		Vec2 y(T(y_(0)), T(y_(1)));
-
-		SymmetricGeometricDistanceTerms<T>(H,
-			x,
-			y,
-			&residuals[0],
-			&residuals[2]);
-		return true;
-	}
-
-	const Vec2 x_;
-	const Vec2 y_;
-};
 
 
-bool create_optimization_problem(const Mat &x1, const Mat &x2, Mat3 *H) {
+bool create_optimization_problem(const Mat &x1, const Mat &x2, Mat &x3_new,Mat3 *H) {
 
 	// few checks 
 	assert(2 == x1.rows());
@@ -110,36 +58,38 @@ bool create_optimization_problem(const Mat &x1, const Mat &x2, Mat3 *H) {
 		A(j, 0) = 0;
 		A(j, 1) = 0;
 		A(j, 2) = 0;
-		A(j, 3) = -x1(0,i);
-		A(j, 4) = -x1(1,i);
+		A(j, 3) = -x1(0, i);
+		A(j, 4) = -x1(1, i);
 		A(j, 5) = -1;
-		A(j, 6) = x2(1,i)*x1(0,i);
+		A(j, 6) = x2(1, i) * x1(0, i);
 		A(j, 7) = x2(1, i) * x1(1, i);
 		A(j, 8) = x2(1, i) * 1;
-		
+
 		++j;
 
-		A(j, 0) = x1(0,i);
-		A(j, 1) = x1(1,i);
+		A(j, 0) = x1(0, i);
+		A(j, 1) = x1(1, i);
 		A(j, 2) = 1;
 		A(j, 3) = 0;
 		A(j, 4) = 0;
 		A(j, 5) = 0;
-		A(j, 6) = -x2(0,i) * x1(0,i);
-		A(j, 7) = -x2(0, i)* x1(1,i);
+		A(j, 6) = -x2(0, i) * x1(0, i);
+		A(j, 7) = -x2(0, i) * x1(1, i);
 		A(j, 8) = -x2(0, i) * 1;
 
 		Mat V = A.bdcSvd(ComputeFullU | ComputeFullV).matrixV();
-		 Vec h = V.col(8);
+		Vec h = V.col(8);
 		Homography2DNormalizedParameterization<double>::To(h, H);
-		
+		double k = {2};
 
 		// Improve the matrix using the Iterative minimization using the reprojection error as the cost Funxtion
 		ceres::Problem problem;
+		Vec2 x_new_vec;
 		for (int i = 0; i < x1.cols();i++) {
 
-			ceres::CostFunction* mycost_o = new AutoDiffCostFunction<Homography_symmetric_transfer_cost, 4,9>(new Homography_symmetric_transfer_cost(x1.col(i), x2.col(i)));
-			problem.AddResidualBlock(mycost_o, nullptr,H->data());
+		 double	x_new_vec[2] = {x3_new(0, i), x3_new(1, i)};
+			ceres::CostFunction* mycost_o = new AutoDiffCostFunction<Homography_reprojection_cost, 1,9,2>(new Homography_reprojection_cost(x1.col(i), x2.col(i)));
+			problem.AddResidualBlock(mycost_o, nullptr,H->data(), x_new_vec);
 					
 		}
 		// Configure the solve.
@@ -182,6 +132,8 @@ int main(int argc, char **argv) {
 			   0.0, -0.000983, 1.0;
 	Mat x2 = x1;
 
+	Mat x_new = x2;
+
 	// create the correspondence points 
 
 	for (int i = 0; i < x2.cols(); ++i) {
@@ -197,9 +149,16 @@ int main(int argc, char **argv) {
 
 	}
 
+
+	for (int i = 0; i < x_new.cols(); ++i) {
+		
+		x_new(0, i) = x1(0,i) + static_cast<double>(rand() % 1000) / 5000.0;
+		x_new(1, i) = x1(1,i) + static_cast<double>(rand() % 1000) / 5000.0;
+
+	}
 	Mat3 estimated_Hmatrix;
 
-	create_optimization_problem(x1,x2,&estimated_Hmatrix);
+	create_optimization_problem(x1,x2,x_new,&estimated_Hmatrix);
 
 	estimated_Hmatrix /= estimated_Hmatrix(2, 2);
 
