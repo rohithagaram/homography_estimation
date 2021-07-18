@@ -77,7 +77,7 @@ bool create_optimization_problem(const Mat &x1, const Mat &x2, Mat &x3_new,Mat3 
 		A(j, 7) = -x2(0, i) * x1(1, i);
 		A(j, 8) = -x2(0, i) * 1;
 
-		Mat V = A.bdcSvd(ComputeFullU | ComputeFullV).matrixV();
+		Mat V = A.jacobiSvd(ComputeFullU | ComputeFullV).matrixV();
 		Vec h = V.col(8);
 		Homography2DNormalizedParameterization<double>::To(h, H);
 		double k = {2};

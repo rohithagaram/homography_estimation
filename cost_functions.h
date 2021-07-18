@@ -153,7 +153,7 @@ struct sampson_error_cost {
 		Mat_2_9 epsilon_mat ;
 		Mat_2_4 J ;
 		Vec9 H_;
-
+		Mat3 H(homography_parameters);
 		H_ << homography_parameters[0],
 			  homography_parameters[1],
 			  homography_parameters[2],
