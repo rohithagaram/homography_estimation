@@ -7,4 +7,3 @@ This includes the different cost function both the linear least square and non-l
 	• Reprojection error
 	• Sampson error
 
-And ransac algorithm to account for the outliers in the  correspondence .
